@@ -25,10 +25,11 @@ class Renamer :
         self.episodes = Episodes()
 
     def rename(self, old_name) :
-        fm = self.REG_EXP.fullmatch(old_name)
-        absolute_episode_no = self.episodes.find(old_name)
-        if fm is not None and absolute_episode_no is not None:
+        ext = ""
+        if fm := self.REG_EXP.fullmatch(old_name):
             ext = fm.group(1)
+        absolute_episode_no = self.episodes.find(old_name)
+        if absolute_episode_no is not None:
             season = next(t for t in self.SEASONS if t[0] <= absolute_episode_no)
             episode_no = absolute_episode_no - season[0] + 1
             return f"{season[1]}/Tatort - (S{season[1]}_E{episode_no:02d}) - {self.episodes.file_title(absolute_episode_no)}{ext}"
@@ -50,6 +51,7 @@ if __name__ == "__main__" :
         "Tatort_Schimanski___restauriert_in_HD-Freunde_(1986)-0668847862.txt",
         "Tatort-Tatort__Mia_san_jetz_da_wo's_weh_tut-1760368132.txt",
         "Tatort-Der_Tod_der_anderen_(2021)-0912978069.txt",
+        "Tatort-Der_Tod_der_anderen_(2021)-0912978069/",
         "Tatort-Erntedank_e.V.-1671880365.mp4",     # wird nicht gefunden, da Titel aus Wikipedia nicht mit Mediathek übereinstimmt
         "Tatort-In_der_Familie_2-1394444053.txt",   # siehe oben
         "Ratort-Söhne_und_Väter-1549986488.txt",    # wird nicht gefunden, da der Dateiname nicht mit 'Tatort' beginnt
