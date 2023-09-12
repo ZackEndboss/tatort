@@ -1,55 +1,59 @@
+import os, json, shutil, logging
+from logging.config import dictConfig
+from renamer import Renamer
+from watchfolder import Watchfolder
 from pathlib import Path
-from time import sleep
-import _thread, os, logging
+import subprocess
 
-class Watchfolder :
-    logger = logging.getLogger(__name__)
+with open('logging.json', 'rt') as file :
+    dictConfig(json.load(file))
 
-    def __init__(self, folder, action = None, no_system_files = True, watch_size_period = 10, watch_dir_period = 1) -> None:
-        self.folder = folder
-        self.no_system_files = no_system_files
-        self.watch_size_period = watch_size_period
-        self.watch_dir_period = watch_dir_period
-        self.under_observation = []
-        self.action = action
+SOURCE_DIR = "/source"
+DUPLICATE_SUB_DIR = "duplicate"
+UNKNOWN_SUB_DIR = "unknown"
+LOG_SUB_DIR = "logs"
 
-    def __wait_and_execute(self, f:Path) :
-        self.logger.info(f"waiting for {f.name}")
-        source = f"{f.parent}/{f.name}"
-        size = 0
-        while size == 0 or size < os.path.getsize(source) :
-            size = os.path.getsize(source)
-            self.logger.debug(f"{f.name} size: {size}")
-            sleep(self.watch_size_period)
-        self.logger.debug(f"{f.name} ready...")
-        try :
-            if self.action is None :
-                f.unlink(missing_ok=True)
-            else :
-                self.action(f)
-        except Exception as e:
-            self.logger.error(f"Exception occured: {e}")
-        finally :
-            self.under_observation.remove(f.name)
+DEST_DIR = "/destination"
+SYMLINK = True
 
-    def __test_and_start(self, f:Path) :
-        if f.is_file() and (not self.no_system_files or not f.name.startswith('.')) :
-            if not f.name in self.under_observation :
-                self.under_observation.append(f.name)
-                _thread.start_new_thread(self.__wait_and_execute, (f, ))
+renamer = Renamer()
+logger = logging.getLogger(__name__)
 
-    def watch(self) :
-        while True :
-            for f in Path(self.folder).iterdir():
-                self.__test_and_start(f)
-            sleep(self.watch_dir_period)
+def move(source, dest) :
+    os.makedirs(os.path.dirname(dest), exist_ok=True)
+    if SYMLINK is True:
+        # os.symlink(source, dest)
+        subprocess.check_call('mklink /J "%s" "%s"' % (source, dest), shell=True)
+        logger.info(f"link: {source} -> {dest}")
+    else:
+        shutil.move(source, dest)
+        logger.info(f"mode: {source} -> {dest}")
 
-if __name__ == "__main__" :
-    def move(f:Path) :
-        print(f"Moving: {f.name}")
-        f.rename(f"/Users/haiko/Documents/Temp/destination/{f.name}")
+def file_arrived(f:Path):
+    source = f"{f.parent}/{f.name}"
+    new_name = renamer.rename(f.name)
+    if new_name is not None :
+        dest = f"{DEST_DIR}/{new_name}"
+        duplicate = f"{SOURCE_DIR}/{DUPLICATE_SUB_DIR}/{f.name}"
+        if not os.path.isfile(dest) and not os.path.islink(dest):
+            logger.info(f">>> {f.name} moved")
+            move(source, dest)
+        else :
+            logger.info(f"*** {f.name} duplicate")
+            move(source, duplicate)
+    else :
+        logger.info(f"??? {f.name} not found")
+        unknown = f"{SOURCE_DIR}/{UNKNOWN_SUB_DIR}/{f.name}"
+        move(source, unknown)
 
-    wf = Watchfolder("/Users/haiko/Documents/Temp/watchfolder", action = move)
+if __name__ == "__main__":
+    os.makedirs(f"{SOURCE_DIR}/{DUPLICATE_SUB_DIR}", exist_ok=True)
+    os.makedirs(f"{SOURCE_DIR}/{UNKNOWN_SUB_DIR}", exist_ok=True)
+    os.makedirs(f"{SOURCE_DIR}/{LOG_SUB_DIR}", exist_ok=True)
+    
+    logger.info("Start watching...")
+
+    wf = Watchfolder(SOURCE_DIR, action = file_arrived)
     try :
         wf.watch()
     except KeyboardInterrupt :
